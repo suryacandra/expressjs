@@ -59,9 +59,8 @@ api.get('/video', (req, res) => {
         })
     } else {
         s3.headObject(downloadParams, (err, data) => {
-            console.log(data)
             const videoSize = data.ContentLength
-            const CHUNK_SIZE = 10 ** 6;
+            const CHUNK_SIZE = 2500000;
             const start = Number(range.replace(/\D/g, ""));
             const end = Math.min(start + CHUNK_SIZE, videoSize - 1);
             const contentLength = end - start + 1;
