@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import express from 'express';
 import cors from 'cors';
 import AWS from 'aws-sdk';
@@ -83,7 +85,7 @@ api.post('/upload', async (req, res) => {
     }
 })
 
-api.get('/video', (req, res, next) => {
+api.get('/video', async (req, res, next) => {
     // const range = req.headers.range;
     // if (!range) {
     //     s3.headObject(downloadParams, (err, data) => {
@@ -97,40 +99,118 @@ api.get('/video', (req, res, next) => {
     //         return
     //     })
     // } else {
-    s3.headObject(downloadParams, function (err, data) {
-        if (err) {
-            console.error(err);
-            return next(err);
-        }
-        if (req.headers.range) {
-            const range = req.headers.range;
-            const bytes = range.replace(/bytes=/, '').split('-');
-            const start = parseInt(bytes[0], 10);
-            const total = data.ContentLength;
-            const end = bytes[1] ? parseInt(bytes[1], 10) : total - 1;
-            const chunkSize = end - start + 1;
-            res.set('Content-Range', 'bytes ' + start + '-' + end + '/' + total);
-            res.set('Accept-Ranges', 'bytes');
-            res.set('Content-Length', chunkSize.toString());
-            downloadParams['Range'] = range;
-            console.log('video buffering - range, total, start, end ,params', range, total, start, end, downloadParams);
-        } else {
-            res.set('Content-Length', data.ContentLength.toString());
-            console.log('video buffering - ,params', downloadParams);
-        }
-        res.status(206);
-        res.set('Content-Type', data.ContentType);
-        res.set('Last-Modified', data.LastModified.toString());
-        res.set('ETag', data.ETag);
-        const stream = s3.getObject(downloadParams).createReadStream();
-        stream.on('error', function error(err) {
-            return next(err);
-        });
-        stream.on('end', () => {
-            console.log('Served by Amazon S3');
-        });
-        stream.pipe(res);
+//     const rangeHeader = req.headers.range;
+//   if (rangeHeader) {
+//     const parts = rangeHeader.replace(/bytes=/, "").split("-");
+//     const start = parseInt(parts[0], 10);
+//     const end = parts[1] ? parseInt(parts[1], 10) : downloadParams.ContentLength - 1;
+//     downloadParams.Range = `bytes=${start}-${end}`;
+//     res.status(206);
+//   }
+        
+    // const rangeHeader = req.headers.range;
+    // if (rangeHeader) {
+    //   const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    //   const start = parseInt(parts[0], 10);
+    //   const end = parts[1] ? parseInt(parts[1], 10) : downloadParams.ContentLength - 1;
+    //   downloadParams.Range = `bytes=${start}-${end}`;
+    //   res.status(206);
+    // }
+  
+    // try {
+    //   const s3HeadObject = await s3.headObject(downloadParams).promise();
+    //   const headers = {
+    //     'Content-Type': s3HeadObject.ContentType,
+    //     'Content-Length': s3HeadObject.ContentLength,
+    //     'Accept-Ranges': 'bytes'
+    //   };
+  
+    //   if (rangeHeader) {
+    //     headers['Content-Range'] = downloadParams.Range;
+    //   }
+  
+    //   res.writeHead(200, headers);
+    const range = req.headers.range;
+
+    if (!range) {
+        return s3.headObject(downloadParams, (err, data) => {
+                    const headers = {
+                        'Content-Disposition': `attachment; filename=1683612738591-StarRail 2023-05-02 09-03-09-894.mp4`,
+                        "Content-Length": data.ContentLength,
+                        "Content-Type": "video/mp4",
+                    };
+                    res.writeHead(200, headers);
+                    s3.getObject(downloadParams).createReadStream().pipe(res);
+        })
+    }
+  
+  
+    s3.headObject(downloadParams, (err, data) => {
+      if (err) {
+        console.log(err);
+        res.status(500).send('Error retrieving video metadata');
+      }
+      console.log(range)
+      const videoSize = data.ContentLength;
+      const start = Number(range.replace(/\D/g, ''));
+      const end = videoSize - 1;
+  
+      const chunkSize = (end - start) + 1;
+  
+      const headers = {
+        'Content-Range': `bytes ${start}-${end}/${videoSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunkSize,
+        'Content-Type': 'video/mp4',
+      };
+  
+      res.writeHead(206, headers);
+  
+      const s3Stream = s3.getObject({...downloadParams, Range: `bytes=${start}-${end}`}).createReadStream();
+      s3Stream.on('error', (err) => {
+        console.log(err);
+        res.status(500).send('Error streaming video');
+      }).pipe(res);
     });
+    // } catch (err) {
+    //   console.error(err);
+    //   res.status(500).send('Error streaming video');
+    // }
+
+    // s3.headObject(downloadParams, function (err, data) {
+    //     if (err) {
+    //         console.error(err);
+    //         return next(err);
+    //     }
+    //     if (req.headers.range) {
+    //         const range = req.headers.range;
+    //         const bytes = range.replace(/bytes=/, '').split('-');
+    //         const start = parseInt(bytes[0], 10);
+    //         const total = data.ContentLength;
+    //         const end = bytes[1] ? parseInt(bytes[1], 10) : total - 1;
+    //         const chunkSize = end - start + 1;
+    //         res.set('Content-Range', 'bytes ' + start + '-' + end + '/' + total);
+    //         res.set('Accept-Ranges', 'bytes');
+    //         res.set('Content-Length', chunkSize.toString());
+    //         downloadParams['Range'] = range;
+    //         console.log('video buffering - range, total, start, end ,params', range, total, start, end, downloadParams);
+    //     } else {
+    //         res.set('Content-Length', data.ContentLength.toString());
+    //         console.log('video buffering - ,params', downloadParams);
+    //     }
+    //     res.status(206);
+    //     res.set('Content-Type', data.ContentType);
+    //     res.set('Last-Modified', data.LastModified.toString());
+    //     res.set('ETag', data.ETag);
+    //     const stream = s3.getObject(downloadParams).createReadStream();
+    //     stream.on('error', function error(err) {
+    //         return next(err);
+    //     });
+    //     stream.on('end', () => {
+    //         console.log('Served by Amazon S3');
+    //     });
+    //     stream.pipe(res);
+    // });
 
     // s3.headObject(downloadParams, (err, data) => {
     //     const videoSize = data.ContentLength
